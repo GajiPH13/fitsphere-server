@@ -32,7 +32,7 @@ async function run() {
 
     // Collections
     const classesCollection = client.db('fitsphere_DB').collection('classes');
-    // const usersCollection = client.db('fitsphere_DB').collection('users');
+    const forumPostsCollection = client.db('fitsphere_DB').collection('forumPosts');
     const bookingsCollection = client.db('fitsphere_DB').collection('bookings');
     const favoritesCollection = client.db('fitsphere_DB').collection('favorites');
 
@@ -61,16 +61,31 @@ async function run() {
         const activeLimit = limit || 6;
         const skip = (activePage - 1) * activeLimit;
 
+        // const searchQuery = req.query.search || "";
+        // let queryFilter = {};
+
+        // if (searchQuery) {
+        //   queryFilter = {
+        //     $or: [
+        //       { title: { $regex: searchQuery, $options: "i" } }, // "i" for case-insensitive
+        //       { trainer: { $regex: searchQuery, $options: "i" } }
+        //     ]
+        //   };
+        // }
         const searchQuery = req.query.search || "";
+        const categoryQuery = req.query.category || "";
+
         let queryFilter = {};
 
         if (searchQuery) {
-          queryFilter = {
-            $or: [
-              { title: { $regex: searchQuery, $options: "i" } }, // "i" for case-insensitive
-              { trainer: { $regex: searchQuery, $options: "i" } }
-            ]
-          };
+          queryFilter.$or = [
+            { title: { $regex: searchQuery, $options: "i" } },
+            { trainer: { $regex: searchQuery, $options: "i" } }
+          ];
+        }
+
+        if (categoryQuery && categoryQuery !== "All") {
+          queryFilter.category = categoryQuery;
         }
 
         const totalItems = await classesCollection.countDocuments(queryFilter);
@@ -228,7 +243,7 @@ async function run() {
           trainer: classItem.trainer || null,
           classTitle: classItem.title,
           price: classItem.price || 0,
-          paymentStatus: "pending",
+          paymentStatus: "approved",
           bookingStatus: "booked",
           createdAt: new Date(),
         };
@@ -423,6 +438,120 @@ async function run() {
         });
       }
     });
+
+    // ==========================================
+    // GET ALL Published Forums posts
+    // ==========================================
+    app.get("/api/forum-posts", async (req, res) => {
+      try {
+        const result = await forumPostsCollection
+          .find({
+            status: "published",
+            authorRole: { $in: ["trainer", "admin"] },
+          })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send(result);
+      } catch (error) {
+        console.error("Error fetching forum posts:", error);
+        res.status(500).send({
+          message: "Internal Server Error",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==========================================
+    // GET Single  Forums posts
+    // ==========================================
+    app.get("/api/forum-posts/:id", async (req, res) => {
+      try {
+        const postId = req.params.id;
+
+        if (!ObjectId.isValid(postId)) {
+          return res.status(400).send({ message: "Invalid post id" });
+        }
+
+        const result = await forumPostsCollection.findOne({
+          _id: new ObjectId(postId),
+        });
+
+        if (!result) {
+          return res.status(404).send({ message: "Post not found" });
+        }
+
+        res.status(200).send(result);
+      } catch (error) {
+        console.error("Error fetching forum post:", error);
+        res.status(500).send({
+          message: "Internal Server Error",
+          error: error.message,
+        });
+      }
+    });
+    // ==========================================
+    // Create forum post
+    // ==========================================
+    app.post("/api/forum-posts", async (req, res) => {
+      try {
+        const post = req.body;
+
+        const allowedRoles = ["trainer", "admin"];
+
+        if (!allowedRoles.includes(post.authorRole)) {
+          return res.status(403).send({
+            success: false,
+            message: "Only trainers and admins can create forum posts",
+          });
+        }
+
+        if (
+          !post.title ||
+          !post.authorName ||
+          !post.authorRole ||
+          !post.image ||
+          !post.shortDescription ||
+          !post.content
+        ) {
+          return res.status(400).send({
+            success: false,
+            message: "Missing required fields",
+          });
+        }
+
+        const newPost = {
+          title: post.title,
+          authorName: post.authorName,
+          authorRole: post.authorRole,
+          image: post.image,
+          shortDescription: post.shortDescription,
+          content: post.content,
+          category: post.category || "General",
+          status: post.status || "published",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        const result = await forumPostsCollection.insertOne(newPost);
+
+        res.status(201).send({
+          success: true,
+          message: "Forum post created successfully",
+          insertedId: result.insertedId,
+          post: newPost,
+        });
+      } catch (error) {
+        console.error("Error creating forum post:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal Server Error",
+          error: error.message,
+        });
+      }
+    });
+
+
 
 
     // Send a ping to confirm a successful connection

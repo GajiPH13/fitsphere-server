@@ -37,6 +37,8 @@ async function run() {
     const favoritesCollection = client.db('fitsphere_DB').collection('favorites');
     const forumCommentsCollection = client.db('fitsphere_DB').collection('forumComments');
     const forumVotesCollection = client.db('fitsphere_DB').collection('forumVotes');
+    const trainerApplicationsCollection = client.db('fitsphere_DB').collection('trainerApplications');
+    const usersCollection = client.db('fitsphere_DB').collection('user');
 
 
     // ==========================================
@@ -583,102 +585,102 @@ async function run() {
     // DELETE FORUM POST
     // ==========================================
     app.delete("/api/forum-posts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+      try {
+        const { id } = req.params;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid post id",
-      });
-    }
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid post id",
+          });
+        }
 
-    const result = await forumPostsCollection.deleteOne({
-      _id: new ObjectId(id),
+        const result = await forumPostsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Post not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: "Post deleted successfully",
+        });
+      } catch (error) {
+        console.error("Delete forum post error:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to delete forum post",
+          error: error.message,
+        });
+      }
     });
 
-    if (result.deletedCount === 0) {
-      return res.status(404).send({
-        success: false,
-        message: "Post not found",
-      });
-    }
+    // ==========================================
+    // Update forum post
+    // ==========================================
+    app.patch("/api/forum-posts/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
 
-    res.status(200).send({
-      success: true,
-      message: "Post deleted successfully",
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid post id",
+          });
+        }
+
+        const {
+          title,
+          image,
+          shortDescription,
+          content,
+          category,
+          status,
+        } = req.body;
+
+        const updateDoc = {
+          updatedAt: new Date(),
+        };
+
+        if (title) updateDoc.title = title;
+        if (image) updateDoc.image = image;
+        if (shortDescription) updateDoc.shortDescription = shortDescription;
+        if (content) updateDoc.content = content;
+        if (category) updateDoc.category = category;
+        if (status) updateDoc.status = status;
+
+        const result = await forumPostsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateDoc }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Post not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: "Forum post updated successfully",
+        });
+      } catch (error) {
+        console.error("Update forum post error:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to update forum post",
+          error: error.message,
+        });
+      }
     });
-  } catch (error) {
-    console.error("Delete forum post error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to delete forum post",
-      error: error.message,
-    });
-  }
-});
-
-// ==========================================
-// Update forum post
-// ==========================================
-app.patch("/api/forum-posts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid post id",
-      });
-    }
-
-    const {
-      title,
-      image,
-      shortDescription,
-      content,
-      category,
-      status,
-    } = req.body;
-
-    const updateDoc = {
-      updatedAt: new Date(),
-    };
-
-    if (title) updateDoc.title = title;
-    if (image) updateDoc.image = image;
-    if (shortDescription) updateDoc.shortDescription = shortDescription;
-    if (content) updateDoc.content = content;
-    if (category) updateDoc.category = category;
-    if (status) updateDoc.status = status;
-
-    const result = await forumPostsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: updateDoc }
-    );
-
-    if (result.matchedCount === 0) {
-      return res.status(404).send({
-        success: false,
-        message: "Post not found",
-      });
-    }
-
-    res.status(200).send({
-      success: true,
-      message: "Forum post updated successfully",
-    });
-  } catch (error) {
-    console.error("Update forum post error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to update forum post",
-      error: error.message,
-    });
-  }
-});
 
 
 
@@ -890,9 +892,387 @@ app.patch("/api/forum-posts/:id", async (req, res) => {
     });
 
 
+    // ==============================
+    //   POST Member Aplication as Trainer
+    // ==============================
+    app.post("/api/trainer-applications", async (req, res) => {
+      try {
+        const {
+          userId,
+          userName,
+          userEmail,
+          image,
+          experience,
+          skills,
+          certification,
+          bio,
+        } = req.body;
+
+        // Validate required fields
+        if (
+          !userId ||
+          !userName ||
+          !userEmail ||
+          !image ||
+          !experience ||
+          !skills ||
+          !certification ||
+          !bio
+        ) {
+          return res.status(400).send({
+            success: false,
+            message: "All fields are required.",
+          });
+        }
+
+        // Check for existing pending application
+        const existingApplication = await trainerApplicationsCollection.findOne({
+          userId,
+          status: { $in: ["pending", "approved"] },
+        });
+
+        if (existingApplication) {
+          return res.status(409).send({
+            success: false,
+            message:
+              existingApplication.status === "pending"
+                ? "You already have a pending trainer application."
+                : "You are already approved as a trainer.",
+          });
+        }
+
+        const application = {
+          userId,
+          userName,
+          userEmail,
+          image,
+          experience,
+          skills,
+          certification,
+          bio,
+          status: "pending",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        const result = await trainerApplicationsCollection.insertOne(application);
+
+        res.status(201).send({
+          success: true,
+          message: "Trainer application submitted successfully.",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Trainer application error:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to submit trainer application.",
+          error: error.message,
+        });
+      }
+    });
 
 
+    // ==============================
+    // GET All Trainer Applications
+    // ==============================
 
+    app.get("/api/trainer-applications", async (req, res) => {
+      try {
+        const applications = await trainerApplicationsCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send(applications);
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch trainer applications.",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==============================
+    //    PATCH Application Status
+    // ==============================
+    app.patch("/api/trainer-applications/:id/status", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { status, userId } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid application id.",
+          });
+        }
+
+        if (!["approved", "rejected"].includes(status)) {
+          return res.status(400).send({
+            success: false,
+            message: "Status must be approved or rejected.",
+          });
+        }
+
+        const updateApplication = await trainerApplicationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              status,
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        if (updateApplication.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Trainer application not found.",
+          });
+        }
+
+        if (status === "approved") {
+          await usersCollection.updateOne(
+            { _id: new ObjectId(userId) },
+            {
+              $set: {
+                role: "trainer",
+                updatedAt: new Date(),
+              },
+            }
+          );
+        }
+
+        res.status(200).send({
+          success: true,
+          message:
+            status === "approved"
+              ? "Application approved and user promoted to trainer."
+              : "Application rejected successfully.",
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to update application status.",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==============================
+    //  GET API users
+    // ==============================
+    app.get("/api/users", async (req, res) => {
+      try {
+        const users = await usersCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send(users);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch users",
+          error: error.message,
+        });
+      }
+    });
+
+
+    // ==============================
+    // BLOCK/UNBLOCK USER
+    // ==============================
+
+    app.patch("/api/users/:id/block", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ success: false, message: "Invalid user id" });
+        }
+
+        if (!["active", "blocked"].includes(status)) {
+          return res.status(400).send({
+            success: false,
+            message: "Status must be active or blocked",
+          });
+        }
+
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status, updatedAt: new Date() } }
+        );
+
+        res.send({
+          success: true,
+          message: `User ${status === "blocked" ? "blocked" : "unblocked"} successfully`,
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (error) {
+        res.status(500).send({ success: false, message: error.message });
+      }
+    });
+
+
+    // ==============================
+    // Role Update API
+    // ==============================
+    app.patch("/api/users/:id/role", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { role } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ success: false, message: "Invalid user id" });
+        }
+
+        if (!["member", "trainer", "admin"].includes(role)) {
+          return res.status(400).send({
+            success: false,
+            message: "Role must be member, trainer, or admin",
+          });
+        }
+
+        const result = await usersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { role, updatedAt: new Date() } }
+        );
+
+        res.send({
+          success: true,
+          message: "User role updated successfully",
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (error) {
+        res.status(500).send({ success: false, message: error.message });
+      }
+    });
+
+
+    // ==============================
+    //  GET /api/admin/classes
+    // ==============================
+    // ==========================================
+    // ADMIN: GET ALL CLASSES
+    // ==========================================
+    app.get("/api/admin/classes", async (req, res) => {
+      try {
+        const result = await classesCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send(result);
+      } catch (error) {
+        console.error("Error fetching admin classes:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch classes",
+          error: error.message,
+        });
+      }
+    });
+
+    // =============================
+    //  PATCH /api/classes/:id/status
+    // ==============================
+    app.patch("/api/classes/:id/status", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid class id",
+          });
+        }
+
+        if (!["approved", "rejected", "pending"].includes(status)) {
+          return res.status(400).send({
+            success: false,
+            message: "Status must be approved, rejected, or pending",
+          });
+        }
+
+        const result = await classesCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              status,
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Class not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: `Class ${status} successfully`,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to update class status",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==============================
+    //  DELETE /api/classes/:id
+    // ==============================
+
+    app.delete("/api/classes/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid class id",
+          });
+        }
+
+        const result = await classesCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Class not found",
+          });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: "Class deleted successfully",
+        });
+      } catch (error) {
+        console.error("Delete class error:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to delete class",
+          error: error.message,
+        });
+      }
+    });
 
 
     // Send a ping to confirm a successful connection

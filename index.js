@@ -35,6 +35,7 @@ async function run() {
     const forumPostsCollection = client.db('fitsphere_DB').collection('forumPosts');
     const bookingsCollection = client.db('fitsphere_DB').collection('bookings');
     const favoritesCollection = client.db('fitsphere_DB').collection('favorites');
+    const forumCommentsCollection = client.db('fitsphere_DB').collection('forumComments');
 
 
     // ==========================================
@@ -61,17 +62,7 @@ async function run() {
         const activeLimit = limit || 6;
         const skip = (activePage - 1) * activeLimit;
 
-        // const searchQuery = req.query.search || "";
-        // let queryFilter = {};
-
-        // if (searchQuery) {
-        //   queryFilter = {
-        //     $or: [
-        //       { title: { $regex: searchQuery, $options: "i" } }, // "i" for case-insensitive
-        //       { trainer: { $regex: searchQuery, $options: "i" } }
-        //     ]
-        //   };
-        // }
+       
         const searchQuery = req.query.search || "";
         const categoryQuery = req.query.category || "";
 
@@ -551,6 +542,84 @@ async function run() {
       }
     });
 
+
+    // ==============================
+    // GET Comments by post id
+    // ==============================
+    app.get("/api/forum-comments/:postId", async (req, res) => {
+      try {
+        const { postId } = req.params;
+
+        const comments = await forumCommentsCollection
+          .find({ postId })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send(comments);
+      } catch (error) {
+        console.error("Error fetching comments:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch comments",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==============================
+    // CREATE COMMENT
+    // ==============================
+    app.post("/api/forum-comments", async (req, res) => {
+  try {
+    const {
+      postId,
+      userId,
+      userName,
+      userImage,
+      comment,
+    } = req.body;
+
+    if (
+      !postId ||
+      !userId ||
+      !userName ||
+      !comment
+    ) {
+      return res.status(400).send({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const newComment = {
+      postId,
+      userId,
+      userName,
+      userImage: userImage || "",
+      comment,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await forumCommentsCollection.insertOne(newComment);
+
+    res.status(201).send({
+      success: true,
+      message: "Comment added successfully",
+      insertedId: result.insertedId,
+      comment: newComment,
+    });
+  } catch (error) {
+    console.error("Error creating comment:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to create comment",
+      error: error.message,
+    });
+  }
+});
 
 
 

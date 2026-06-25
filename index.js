@@ -36,6 +36,7 @@ async function run() {
     const bookingsCollection = client.db('fitsphere_DB').collection('bookings');
     const favoritesCollection = client.db('fitsphere_DB').collection('favorites');
     const forumCommentsCollection = client.db('fitsphere_DB').collection('forumComments');
+    const forumVotesCollection = client.db('fitsphere_DB').collection('forumVotes');
 
 
     // ==========================================
@@ -62,7 +63,7 @@ async function run() {
         const activeLimit = limit || 6;
         const skip = (activePage - 1) * activeLimit;
 
-       
+
         const searchQuery = req.query.search || "";
         const categoryQuery = req.query.category || "";
 
@@ -454,6 +455,36 @@ async function run() {
     });
 
     // ==========================================
+    // GET FORUM POSTS BY AUTHOR
+    // ==========================================
+    app.get("/api/forum-posts/author/:authorId", async (req, res) => {
+      try {
+        const { authorId } = req.params;
+
+        if (!authorId) {
+          return res.status(400).send({
+            success: false,
+            message: "authorId is required",
+          });
+        }
+
+        const posts = await forumPostsCollection
+          .find({ authorId })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send(posts);
+      } catch (error) {
+        console.error("Error fetching author forum posts:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch author forum posts",
+          error: error.message,
+        });
+      }
+    });
+    // ==========================================
     // GET Single  Forums posts
     // ==========================================
     app.get("/api/forum-posts/:id", async (req, res) => {
@@ -514,6 +545,7 @@ async function run() {
         const newPost = {
           title: post.title,
           authorName: post.authorName,
+          authorId: post.authorId,
           authorRole: post.authorRole,
           image: post.image,
           shortDescription: post.shortDescription,
@@ -525,7 +557,12 @@ async function run() {
         };
 
         const result = await forumPostsCollection.insertOne(newPost);
-
+        if (!post.authorId) {
+          return res.status(400).send({
+            success: false,
+            message: "authorId is required",
+          });
+        }
         res.status(201).send({
           success: true,
           message: "Forum post created successfully",
@@ -541,6 +578,108 @@ async function run() {
         });
       }
     });
+
+    // ==========================================
+    // DELETE FORUM POST
+    // ==========================================
+    app.delete("/api/forum-posts/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
+    const result = await forumPostsCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "Post deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete forum post error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to delete forum post",
+      error: error.message,
+    });
+  }
+});
+
+// ==========================================
+// Update forum post
+// ==========================================
+app.patch("/api/forum-posts/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid post id",
+      });
+    }
+
+    const {
+      title,
+      image,
+      shortDescription,
+      content,
+      category,
+      status,
+    } = req.body;
+
+    const updateDoc = {
+      updatedAt: new Date(),
+    };
+
+    if (title) updateDoc.title = title;
+    if (image) updateDoc.image = image;
+    if (shortDescription) updateDoc.shortDescription = shortDescription;
+    if (content) updateDoc.content = content;
+    if (category) updateDoc.category = category;
+    if (status) updateDoc.status = status;
+
+    const result = await forumPostsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateDoc }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "Forum post updated successfully",
+    });
+  } catch (error) {
+    console.error("Update forum post error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to update forum post",
+      error: error.message,
+    });
+  }
+});
+
 
 
     // ==============================
@@ -571,55 +710,188 @@ async function run() {
     // CREATE COMMENT
     // ==============================
     app.post("/api/forum-comments", async (req, res) => {
-  try {
-    const {
-      postId,
-      userId,
-      userName,
-      userImage,
-      comment,
-    } = req.body;
+      try {
+        const {
+          postId,
+          userId,
+          userName,
+          userImage,
+          comment,
+        } = req.body;
 
-    if (
-      !postId ||
-      !userId ||
-      !userName ||
-      !comment
-    ) {
-      return res.status(400).send({
-        success: false,
-        message: "Missing required fields",
-      });
-    }
+        if (
+          !postId ||
+          !userId ||
+          !userName ||
+          !comment
+        ) {
+          return res.status(400).send({
+            success: false,
+            message: "Missing required fields",
+          });
+        }
 
-    const newComment = {
-      postId,
-      userId,
-      userName,
-      userImage: userImage || "",
-      comment,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+        const newComment = {
+          postId,
+          userId,
+          userName,
+          userImage: userImage || "",
+          comment,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
 
-    const result = await forumCommentsCollection.insertOne(newComment);
+        const result = await forumCommentsCollection.insertOne(newComment);
 
-    res.status(201).send({
-      success: true,
-      message: "Comment added successfully",
-      insertedId: result.insertedId,
-      comment: newComment,
+        res.status(201).send({
+          success: true,
+          message: "Comment added successfully",
+          insertedId: result.insertedId,
+          comment: newComment,
+        });
+      } catch (error) {
+        console.error("Error creating comment:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to create comment",
+          error: error.message,
+        });
+      }
     });
-  } catch (error) {
-    console.error("Error creating comment:", error);
 
-    res.status(500).send({
-      success: false,
-      message: "Failed to create comment",
-      error: error.message,
+    // ==============================
+    //   GET Forum Votes
+    // ==============================
+    app.get("/api/forum-votes/:postId", async (req, res) => {
+      try {
+        const { postId } = req.params;
+        const { userId } = req.query;
+
+        const totalLikes = await forumVotesCollection.countDocuments({
+          postId,
+          voteType: "like",
+        });
+
+        const totalDislikes = await forumVotesCollection.countDocuments({
+          postId,
+          voteType: "dislike",
+        });
+
+        let currentUserVote = null;
+
+        if (userId) {
+          const userVote = await forumVotesCollection.findOne({
+            postId,
+            userId,
+          });
+
+          currentUserVote = userVote?.voteType || null;
+        }
+
+        res.status(200).send({
+          totalLikes,
+          totalDislikes,
+          currentUserVote,
+        });
+      } catch (error) {
+        console.error("Error fetching forum votes:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch forum votes",
+          error: error.message,
+        });
+      }
     });
-  }
-});
+
+    // ==============================
+    //   CREATE FORUM VOTE
+    // ==============================
+    app.post("/api/forum-votes", async (req, res) => {
+      try {
+        const { postId, userId, voteType } = req.body;
+
+        if (!postId || !userId || !voteType) {
+          return res.status(400).send({
+            success: false,
+            message: "postId, userId, and voteType are required",
+          });
+        }
+
+        if (!["like", "dislike"].includes(voteType)) {
+          return res.status(400).send({
+            success: false,
+            message: "voteType must be like or dislike",
+          });
+        }
+
+        const existingVote = await forumVotesCollection.findOne({
+          postId,
+          userId,
+        });
+
+        if (!existingVote) {
+          await forumVotesCollection.insertOne({
+            postId,
+            userId,
+            voteType,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } else if (existingVote.voteType === voteType) {
+          await forumVotesCollection.deleteOne({
+            postId,
+            userId,
+          });
+        } else {
+          await forumVotesCollection.updateOne(
+            { postId, userId },
+            {
+              $set: {
+                voteType,
+                updatedAt: new Date(),
+              },
+            }
+          );
+        }
+
+        const totalLikes = await forumVotesCollection.countDocuments({
+          postId,
+          voteType: "like",
+        });
+
+        const totalDislikes = await forumVotesCollection.countDocuments({
+          postId,
+          voteType: "dislike",
+        });
+
+        const updatedVote = await forumVotesCollection.findOne({
+          postId,
+          userId,
+        });
+
+        res.status(200).send({
+          success: true,
+          message: "Vote updated successfully",
+          totalLikes,
+          totalDislikes,
+          currentUserVote: updatedVote?.voteType || null,
+        });
+      } catch (error) {
+        console.error("Error updating forum vote:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to update forum vote",
+          error: error.message,
+        });
+      }
+    });
+
+
+
+
 
 
 

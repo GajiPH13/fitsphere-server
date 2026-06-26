@@ -40,6 +40,57 @@ async function run() {
     const trainerApplicationsCollection = client.db('fitsphere_DB').collection('trainerApplications');
     const usersCollection = client.db('fitsphere_DB').collection('user');
 
+    // Middleware to protect routes
+    const getRequestUserId = (req) => {
+      return (
+        req.headers["x-user-id"] ||
+        req.query.requestUserId ||
+        req.body?.requestUserId
+      );
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      try {
+        const requestUserId = getRequestUserId(req);
+
+        if (!requestUserId) {
+          return res.status(401).send({
+            success: false,
+            message: "Unauthorized. requestUserId is required.",
+          });
+        }
+
+        const query = ObjectId.isValid(requestUserId)
+          ? { _id: new ObjectId(requestUserId) }
+          : { _id: requestUserId };
+
+        const user = await usersCollection.findOne(query);
+
+        if (!user) {
+          return res.status(401).send({
+            success: false,
+            message: "Unauthorized. User not found.",
+          });
+        }
+
+        if (user.role !== "admin") {
+          return res.status(403).send({
+            success: false,
+            message: "Forbidden. Admin access only.",
+          });
+        }
+
+        req.requestUser = user;
+        next();
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to verify admin.",
+          error: error.message,
+        });
+      }
+    };
+
 
     // ==========================================
     // UNIFIED CLASSES ROUTE (FIXED & COMBINED)
@@ -1087,7 +1138,7 @@ async function run() {
     // GET All Trainer Applications
     // ==============================
 
-    app.get("/api/trainer-applications", async (req, res) => {
+    app.get("/api/trainer-applications", verifyAdmin, async (req, res) => {
       try {
         const applications = await trainerApplicationsCollection
           .find()
@@ -1107,7 +1158,7 @@ async function run() {
     // ==============================
     //    PATCH Application Status
     // ==============================
-    app.patch("/api/trainer-applications/:id/status", async (req, res) => {
+    app.patch("/api/trainer-applications/:id/status", verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
         const { status, userId } = req.body;
@@ -1174,7 +1225,7 @@ async function run() {
     // ==============================
     //  GET API users
     // ==============================
-    app.get("/api/users", async (req, res) => {
+    app.get("/api/users", verifyAdmin, async (req, res) => {
       try {
         const users = await usersCollection
           .find()
@@ -1198,7 +1249,7 @@ async function run() {
     // BLOCK/UNBLOCK USER
     // ==============================
 
-    app.patch("/api/users/:id/block", async (req, res) => {
+    app.patch("/api/users/:id/block", verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
         const { status } = req.body;
@@ -1233,7 +1284,7 @@ async function run() {
     // ==============================
     // Role Update API
     // ==============================
-    app.patch("/api/users/:id/role", async (req, res) => {
+    app.patch("/api/users/:id/role", verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
         const { role } = req.body;
@@ -1269,7 +1320,7 @@ async function run() {
     //  GET /api/admin/classes
     // ==============================
 
-    app.get("/api/admin/classes", async (req, res) => {
+    app.get("/api/admin/classes", verifyAdmin, async (req, res) => {
       try {
         const result = await classesCollection
           .find()
@@ -1291,7 +1342,7 @@ async function run() {
     // =============================
     //  PATCH /api/classes/:id/status
     // ==============================
-    app.patch("/api/classes/:id/status", async (req, res) => {
+    app.patch("/api/classes/:id/status", verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
         const { status } = req.body;
@@ -1344,7 +1395,7 @@ async function run() {
     //  DELETE /api/classes/:id
     // ==============================
 
-    app.delete("/api/classes/:id", async (req, res) => {
+    app.delete("/api/classes/:id", verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -1550,7 +1601,7 @@ async function run() {
     // ==========================================
     // ADMIN: DASHBOARD STATS
     // ==========================================
-    app.get("/api/admin/stats", async (req, res) => {
+    app.get("/api/admin/stats", verifyAdmin, async (req, res) => {
       try {
         const totalUsers = await usersCollection.countDocuments();
 

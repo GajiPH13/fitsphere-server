@@ -520,23 +520,50 @@ async function run() {
     // ==========================================
     app.get("/api/forum-posts", async (req, res) => {
       try {
-        const result = await forumPostsCollection
-          .find({
-            status: "published",
-            authorRole: { $in: ["trainer", "admin"] },
-          })
-          .sort({ createdAt: -1 })
-          .toArray();
+        const {
+          status,
+          limit,
+          category,
+        } = req.query;
 
-        res.status(200).send(result);
+        const query = {};
+
+        // Filter by status if provided
+        if (status) {
+          query.status = status;
+        }
+
+        // Filter by category if provided
+        if (category) {
+          query.category = category;
+        }
+
+        let cursor = forumPostsCollection
+          .find(query)
+          .sort({ createdAt: -1 });
+
+        // Apply limit if provided
+        if (limit) {
+          cursor = cursor.limit(parseInt(limit));
+        }
+
+        const posts = await cursor.toArray();
+
+        res.status(200).send({
+          success: true,
+          total: posts.length,
+          posts,
+        });
       } catch (error) {
         console.error("Error fetching forum posts:", error);
+
         res.status(500).send({
-          message: "Internal Server Error",
+          success: false,
+          message: "Failed to fetch forum posts.",
           error: error.message,
         });
       }
-    });
+    });;
 
     // ==========================================
     // GET FORUM POSTS BY AUTHOR
@@ -1462,63 +1489,160 @@ async function run() {
 
 
     // ==========================================
-// MEMBER: GET FAVORITE CLASSES WITH DETAILS
-// ==========================================
-app.get("/api/favorites/user/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
+    // MEMBER: GET FAVORITE CLASSES WITH DETAILS
+    // ==========================================
+    app.get("/api/favorites/user/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
 
-    if (!userId) {
-      return res.status(400).send({
-        success: false,
-        message: "User ID is required.",
-      });
-    }
+        if (!userId) {
+          return res.status(400).send({
+            success: false,
+            message: "User ID is required.",
+          });
+        }
 
-    const favorites = await favoritesCollection
-      .find({ userId })
-      .sort({ createdAt: -1 })
-      .toArray();
+        const favorites = await favoritesCollection
+          .find({ userId })
+          .sort({ createdAt: -1 })
+          .toArray();
 
-    const classIds = favorites
-      .map((favorite) => favorite.classId)
-      .filter((id) => ObjectId.isValid(id))
-      .map((id) => new ObjectId(id));
+        const classIds = favorites
+          .map((favorite) => favorite.classId)
+          .filter((id) => ObjectId.isValid(id))
+          .map((id) => new ObjectId(id));
 
-    const favoriteClasses = await classesCollection
-      .find({
-        _id: { $in: classIds },
-      })
-      .toArray();
+        const favoriteClasses = await classesCollection
+          .find({
+            _id: { $in: classIds },
+          })
+          .toArray();
 
-    const result = favoriteClasses.map((classItem) => {
-      const favorite = favorites.find(
-        (fav) => fav.classId === classItem._id.toString()
-      );
+        const result = favoriteClasses.map((classItem) => {
+          const favorite = favorites.find(
+            (fav) => fav.classId === classItem._id.toString()
+          );
 
-      return {
-        ...classItem,
-        favoriteId: favorite?._id,
-        favoritedAt: favorite?.createdAt,
-      };
+          return {
+            ...classItem,
+            favoriteId: favorite?._id,
+            favoritedAt: favorite?.createdAt,
+          };
+        });
+
+        res.status(200).send({
+          success: true,
+          total: result.length,
+          favorites: result,
+        });
+      } catch (error) {
+        console.error("Error fetching favorite classes:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch favorite classes.",
+          error: error.message,
+        });
+      }
     });
 
-    res.status(200).send({
-      success: true,
-      total: result.length,
-      favorites: result,
-    });
-  } catch (error) {
-    console.error("Error fetching favorite classes:", error);
 
-    res.status(500).send({
-      success: false,
-      message: "Failed to fetch favorite classes.",
-      error: error.message,
-    });
-  }
-});
+    // ==========================================
+    // ADMIN: DASHBOARD STATS
+    // ==========================================
+    app.get("/api/admin/stats", async (req, res) => {
+      try {
+        const totalUsers = await usersCollection.countDocuments();
 
+        const totalMembers = await usersCollection.countDocuments({
+          role: "member",
+        });
+
+        const totalTrainers = await usersCollection.countDocuments({
+          role: "trainer",
+        });
+
+        const totalAdmins = await usersCollection.countDocuments({
+          role: "admin",
+        });
+
+        const totalClasses = await classesCollection.countDocuments();
+
+        const approvedClasses = await classesCollection.countDocuments({
+          status: "approved",
+        });
+
+        const pendingClasses = await classesCollection.countDocuments({
+          status: "pending",
+        });
+
+        const rejectedClasses = await classesCollection.countDocuments({
+          status: "rejected",
+        });
+
+        const totalBookings = await bookingsCollection.countDocuments();
+
+        const approvedBookings = await bookingsCollection.countDocuments({
+          paymentStatus: "approved",
+        });
+
+        const pendingBookings = await bookingsCollection.countDocuments({
+          paymentStatus: "pending",
+        });
+
+        const pendingTrainerApplications =
+          await trainerApplicationsCollection.countDocuments({
+            status: "pending",
+          });
+
+        const revenueResult = await bookingsCollection
+          .aggregate([
+            {
+              $match: {
+                paymentStatus: "approved",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalRevenue: {
+                  $sum: "$price",
+                },
+              },
+            },
+          ])
+          .toArray();
+
+        const totalRevenue = revenueResult[0]?.totalRevenue || 0;
+
+        res.status(200).send({
+          success: true,
+          stats: {
+            totalUsers,
+            totalMembers,
+            totalTrainers,
+            totalAdmins,
+            totalClasses,
+            approvedClasses,
+            pendingClasses,
+            rejectedClasses,
+            totalBookings,
+            approvedBookings,
+            pendingBookings,
+            totalRevenue,
+            pendingTrainerApplications,
+          },
+        });
+      } catch (error) {
+        console.error("Admin stats error:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch admin stats",
+          error: error.message,
+        });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });

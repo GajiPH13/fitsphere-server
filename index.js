@@ -113,6 +113,88 @@ async function run() {
         res.status(500).send({ message: "Internal Server Error", error: error.message });
       }
     });
+
+
+    // =============================
+    // app.post/api/classes
+    // ==============================
+    app.post("/api/classes", async (req, res) => {
+      try {
+        const {
+          title,
+          image,
+          description,
+          category,
+          level,
+          duration,
+          capacity,
+          price,
+          schedule,
+          location,
+          trainerId,
+          trainerName,
+        } = req.body;
+
+        if (
+          !title ||
+          !image ||
+          !description ||
+          !category ||
+          !level ||
+          !duration ||
+          !capacity ||
+          !price ||
+          !schedule ||
+          !location ||
+          !trainerId ||
+          !trainerName
+        ) {
+          return res.status(400).send({
+            success: false,
+            message: "All fields are required.",
+          });
+        }
+
+        const newClass = {
+          title,
+          image,
+          description,
+          category,
+          level,
+          duration,
+          capacity: Number(capacity),
+          price: Number(price),
+          schedule,
+          location,
+          trainerId,
+          trainerName,
+          trainer: trainerName,
+          enrolledMembers: [],
+          enrolledCount: 0,
+          rating: 0,
+          status: "pending",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        const result = await classesCollection.insertOne(newClass);
+
+        res.status(201).send({
+          success: true,
+          message: "Class submitted successfully and is pending admin approval.",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Create class error:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to create class.",
+          error: error.message,
+        });
+      }
+    });
+
     // ==========================================
     // DEtails CLASS ROUTE 
     // ==========================================
@@ -1159,9 +1241,7 @@ async function run() {
     // ==============================
     //  GET /api/admin/classes
     // ==============================
-    // ==========================================
-    // ADMIN: GET ALL CLASSES
-    // ==========================================
+
     app.get("/api/admin/classes", async (req, res) => {
       try {
         const result = await classesCollection
@@ -1274,6 +1354,76 @@ async function run() {
       }
     });
 
+
+    // ==========================================
+    // TRAINER: GET OWN CLASSES
+    // ==========================================
+    app.get("/api/classes/trainer/:trainerId", async (req, res) => {
+      try {
+        const { trainerId } = req.params;
+
+        if (!trainerId) {
+          return res.status(400).send({
+            success: false,
+            message: "Trainer ID is required.",
+          });
+        }
+
+        const classes = await classesCollection
+          .find({ trainerId })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send({
+          success: true,
+          total: classes.length,
+          classes,
+        });
+      } catch (error) {
+        console.error("Error fetching trainer classes:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch trainer classes.",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==========================================
+    // TRAINER: GET ATTENDEES / BOOKINGS
+    // ==========================================
+    app.get("/api/bookings/trainer/:trainerId", async (req, res) => {
+      try {
+        const { trainerId } = req.params;
+
+        if (!trainerId) {
+          return res.status(400).send({
+            success: false,
+            message: "Trainer ID is required.",
+          });
+        }
+
+        const bookings = await bookingsCollection
+          .find({ trainerId })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send({
+          success: true,
+          total: bookings.length,
+          bookings,
+        });
+      } catch (error) {
+        console.error("Error fetching trainer bookings:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch trainer bookings.",
+          error: error.message,
+        });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });

@@ -1425,6 +1425,101 @@ async function run() {
       }
     });
 
+    // ==========================================
+    // MEMBER: GET MY BOOKINGS
+    // ==========================================
+    app.get("/api/bookings/user/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
+
+        if (!userId) {
+          return res.status(400).send({
+            success: false,
+            message: "User ID is required.",
+          });
+        }
+
+        const bookings = await bookingsCollection
+          .find({ userId })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.status(200).send({
+          success: true,
+          total: bookings.length,
+          bookings,
+        });
+      } catch (error) {
+        console.error("Error fetching user bookings:", error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch user bookings.",
+          error: error.message,
+        });
+      }
+    });
+
+
+    // ==========================================
+// MEMBER: GET FAVORITE CLASSES WITH DETAILS
+// ==========================================
+app.get("/api/favorites/user/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).send({
+        success: false,
+        message: "User ID is required.",
+      });
+    }
+
+    const favorites = await favoritesCollection
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const classIds = favorites
+      .map((favorite) => favorite.classId)
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+
+    const favoriteClasses = await classesCollection
+      .find({
+        _id: { $in: classIds },
+      })
+      .toArray();
+
+    const result = favoriteClasses.map((classItem) => {
+      const favorite = favorites.find(
+        (fav) => fav.classId === classItem._id.toString()
+      );
+
+      return {
+        ...classItem,
+        favoriteId: favorite?._id,
+        favoritedAt: favorite?.createdAt,
+      };
+    });
+
+    res.status(200).send({
+      success: true,
+      total: result.length,
+      favorites: result,
+    });
+  } catch (error) {
+    console.error("Error fetching favorite classes:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch favorite classes.",
+      error: error.message,
+    });
+  }
+});
+
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");

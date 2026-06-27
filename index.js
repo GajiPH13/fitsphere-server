@@ -41,6 +41,14 @@ async function run() {
     const usersCollection = client.db('fitsphere_DB').collection('user');
 
     // Middleware to protect routes
+    // const getRequestUserId = (req) => {
+    //   return (
+    //     req.headers["x-user-id"] ||
+    //     req.query.requestUserId ||
+    //     req.body?.requestUserId
+    //   );
+    // };
+
     const getRequestUserId = (req) => {
       return (
         req.headers["x-user-id"] ||
@@ -49,47 +57,179 @@ async function run() {
       );
     };
 
-    const verifyAdmin = async (req, res, next) => {
-      try {
-        const requestUserId = getRequestUserId(req);
+    const verifyRole = (allowedRoles = []) => {
+      return async (req, res, next) => {
+        try {
+          const requestUserId = getRequestUserId(req);
 
-        if (!requestUserId) {
-          return res.status(401).send({
+          if (!requestUserId) {
+            return res.status(401).send({
+              success: false,
+              message: "Unauthorized. User ID is required.",
+            });
+          }
+
+          const query = ObjectId.isValid(requestUserId)
+            ? { _id: new ObjectId(requestUserId) }
+            : { _id: requestUserId };
+
+          const user = await usersCollection.findOne(query);
+
+          if (!user) {
+            return res.status(401).send({
+              success: false,
+              message: "Unauthorized. User not found.",
+            });
+          }
+
+          if (!allowedRoles.includes(user.role)) {
+            return res.status(403).send({
+              success: false,
+              message: `Forbidden. Allowed roles: ${allowedRoles.join(", ")}`,
+            });
+          }
+
+          req.requestUser = user;
+          next();
+        } catch (error) {
+          res.status(500).send({
             success: false,
-            message: "Unauthorized. requestUserId is required.",
+            message: "Failed to verify user role.",
+            error: error.message,
           });
         }
-
-        const query = ObjectId.isValid(requestUserId)
-          ? { _id: new ObjectId(requestUserId) }
-          : { _id: requestUserId };
-
-        const user = await usersCollection.findOne(query);
-
-        if (!user) {
-          return res.status(401).send({
-            success: false,
-            message: "Unauthorized. User not found.",
-          });
-        }
-
-        if (user.role !== "admin") {
-          return res.status(403).send({
-            success: false,
-            message: "Forbidden. Admin access only.",
-          });
-        }
-
-        req.requestUser = user;
-        next();
-      } catch (error) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to verify admin.",
-          error: error.message,
-        });
-      }
+      };
     };
+
+    const verifyAdmin = verifyRole(["admin"]);
+    const verifyTrainer = verifyRole(["trainer"]);
+    const verifyMember = verifyRole(["member"]);
+    const verifyAdminOrTrainer = verifyRole(["admin", "trainer"]);
+
+
+    // const verifyAdmin = async (req, res, next) => {
+    //   try {
+    //     const requestUserId = getRequestUserId(req);
+
+    //     if (!requestUserId) {
+    //       return res.status(401).send({
+    //         success: false,
+    //         message: "Unauthorized. requestUserId is required.",
+    //       });
+    //     }
+
+    //     const query = ObjectId.isValid(requestUserId)
+    //       ? { _id: new ObjectId(requestUserId) }
+    //       : { _id: requestUserId };
+
+    //     const user = await usersCollection.findOne(query);
+
+    //     if (!user) {
+    //       return res.status(401).send({
+    //         success: false,
+    //         message: "Unauthorized. User not found.",
+    //       });
+    //     }
+
+    //     if (user.role !== "admin") {
+    //       return res.status(403).send({
+    //         success: false,
+    //         message: "Forbidden. Admin access only.",
+    //       });
+    //     }
+
+    //     req.requestUser = user;
+    //     next();
+    //   } catch (error) {
+    //     res.status(500).send({
+    //       success: false,
+    //       message: "Failed to verify admin.",
+    //       error: error.message,
+    //     });
+    //   }
+    // };
+    // const verifyTrainer = async (req, res, next) => {
+    //   try {
+    //     const requestUserId = getRequestUserId(req);
+
+    //     if (!requestUserId) {
+    //       return res.status(401).send({
+    //         success: false,
+    //         message: "Unauthorized. requestUserId is required.",
+    //       });
+    //     }
+
+    //     const query = ObjectId.isValid(requestUserId)
+    //       ? { _id: new ObjectId(requestUserId) }
+    //       : { _id: requestUserId };
+
+    //     const user = await usersCollection.findOne(query);
+
+    //     if (!user) {
+    //       return res.status(401).send({
+    //         success: false,
+    //         message: "Unauthorized. User not found.",
+    //       });
+    //     }
+
+    //     if (user.role !== "trainer") {
+    //       return res.status(403).send({
+    //         success: false,
+    //         message: "Forbidden. Trainer access only.",
+    //       });
+    //     }
+
+    //     req.requestUser = user;
+    //     next();
+    //   } catch (error) {
+    //     res.status(500).send({
+    //       success: false,
+    //       message: "Failed to verify trainer.",
+    //       error: error.message,
+    //     });
+    //   }
+    // };
+    // const verifyMember = async (req, res, next) => {
+    //   try {
+    //     const requestUserId = getRequestUserId(req);
+
+    //     if (!requestUserId) {
+    //       return res.status(401).send({
+    //         success: false,
+    //         message: "Unauthorized. requestUserId is required.",
+    //       });
+    //     }
+
+    //     const query = ObjectId.isValid(requestUserId)
+    //       ? { _id: new ObjectId(requestUserId) }
+    //       : { _id: requestUserId };
+
+    //     const user = await usersCollection.findOne(query);
+
+    //     if (!user) {
+    //       return res.status(401).send({
+    //         success: false,
+    //         message: "Unauthorized. User not found.",
+    //       });
+    //     }
+
+    //     if (user.role !== "member") {
+    //       return res.status(403).send({
+    //         success: false,
+    //         message: "Forbidden. member access only.",
+    //       });
+    //     }
+
+    //     req.requestUser = user;
+    //     next();
+    //   } catch (error) {
+    //     res.status(500).send({
+    //       success: false,
+    //       message: "Failed to verify member.",
+    //       error: error.message,
+    //     });
+    //   }
+    // };
 
 
     // ==========================================
@@ -169,7 +309,7 @@ async function run() {
     // =============================
     // app.post/api/classes
     // ==============================
-    app.post("/api/classes", async (req, res) => {
+    app.post("/api/classes", verifyTrainer, async (req, res) => {
       try {
         const {
           title,
@@ -1055,7 +1195,7 @@ async function run() {
     // ==============================
     //   POST Member Aplication as Trainer
     // ==============================
-    app.post("/api/trainer-applications", async (req, res) => {
+    app.post("/api/trainer-applications", verifyMember, async (req, res) => {
       try {
         const {
           userId,
@@ -1436,7 +1576,7 @@ async function run() {
     // ==========================================
     // TRAINER: GET OWN CLASSES
     // ==========================================
-    app.get("/api/classes/trainer/:trainerId", async (req, res) => {
+    app.get("/api/classes/trainer/:trainerId", verifyTrainer, async (req, res) => {
       try {
         const { trainerId } = req.params;
 
@@ -1471,7 +1611,7 @@ async function run() {
     // ==========================================
     // TRAINER: GET ATTENDEES / BOOKINGS
     // ==========================================
-    app.get("/api/bookings/trainer/:trainerId", async (req, res) => {
+    app.get("/api/bookings/trainer/:trainerId", verifyTrainer, async (req, res) => {
       try {
         const { trainerId } = req.params;
 
@@ -1506,7 +1646,7 @@ async function run() {
     // ==========================================
     // MEMBER: GET MY BOOKINGS
     // ==========================================
-    app.get("/api/bookings/user/:userId", async (req, res) => {
+    app.get("/api/bookings/user/:userId", verifyMember, async (req, res) => {
       try {
         const { userId } = req.params;
 
@@ -1542,7 +1682,7 @@ async function run() {
     // ==========================================
     // MEMBER: GET FAVORITE CLASSES WITH DETAILS
     // ==========================================
-    app.get("/api/favorites/user/:userId", async (req, res) => {
+    app.get("/api/favorites/user/:userId", verifyMember, async (req, res) => {
       try {
         const { userId } = req.params;
 

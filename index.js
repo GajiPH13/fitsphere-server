@@ -720,53 +720,110 @@ async function run() {
     // ==========================================
     // GET ALL Published Forums posts
     // ==========================================
-    app.get("/api/forum-posts", async (req, res) => {
-      try {
-        const {
-          status,
-          limit,
-          category,
-        } = req.query;
+    // app.get("/api/forum-posts", async (req, res) => {
+    //   try {
+    //     const {
+    //       status,
+    //       limit,
+    //       category,
+    //     } = req.query;
 
-        const query = {};
+    //     const query = {};
 
-        // Filter by status if provided
-        if (status) {
-          query.status = status;
-        }
+    //     // Filter by status if provided
+    //     if (status) {
+    //       query.status = status;
+    //     }
 
-        // Filter by category if provided
-        if (category) {
-          query.category = category;
-        }
+    //     // Filter by category if provided
+    //     if (category) {
+    //       query.category = category;
+    //     }
 
-        let cursor = forumPostsCollection
-          .find(query)
-          .sort({ createdAt: -1 });
+    //     let cursor = forumPostsCollection
+    //       .find(query)
+    //       .sort({ createdAt: -1 });
 
-        // Apply limit if provided
-        if (limit) {
-          cursor = cursor.limit(parseInt(limit));
-        }
+    //     // Apply limit if provided
+    //     if (limit) {
+    //       cursor = cursor.limit(parseInt(limit));
+    //     }
 
-        const posts = await cursor.toArray();
+    //     const posts = await cursor.toArray();
 
-        res.status(200).send({
-          success: true,
-          total: posts.length,
-          posts,
-        });
-      } catch (error) {
-        console.error("Error fetching forum posts:", error);
+    //     res.status(200).send({
+    //       success: true,
+    //       total: posts.length,
+    //       posts,
+    //     });
+    //   } catch (error) {
+    //     console.error("Error fetching forum posts:", error);
 
-        res.status(500).send({
-          success: false,
-          message: "Failed to fetch forum posts.",
-          error: error.message,
-        });
-      }
-    });;
+    //     res.status(500).send({
+    //       success: false,
+    //       message: "Failed to fetch forum posts.",
+    //       error: error.message,
+    //     });
+    //   }
+    // });;
+  app.get("/api/forum-posts", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6;
+    const skip = (page - 1) * limit;
 
+    const statusQuery = req.query.status || "";
+    const categoryQuery = req.query.category || "";
+    const searchQuery = req.query.search || "";
+
+    const query = {};
+
+    if (statusQuery) {
+      query.status = statusQuery;
+    }
+
+    if (categoryQuery && categoryQuery !== "All") {
+      query.category = categoryQuery;
+    }
+
+    if (searchQuery) {
+      query.$or = [
+        { title: { $regex: searchQuery, $options: "i" } },
+        { shortDescription: { $regex: searchQuery, $options: "i" } },
+        { content: { $regex: searchQuery, $options: "i" } },
+        { authorName: { $regex: searchQuery, $options: "i" } },
+        { authorEmail: { $regex: searchQuery, $options: "i" } },
+        { category: { $regex: searchQuery, $options: "i" } },
+      ];
+    }
+
+    const totalItems = await forumPostsCollection.countDocuments(query);
+
+    const posts = await forumPostsCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+    return res.status(200).send({
+      success: true,
+      posts,
+      totalItems,
+      totalPages: Math.ceil(totalItems / limit) || 1,
+      currentPage: page,
+      limit,
+    });
+  } catch (error) {
+    console.error("Error fetching forum posts:", error);
+
+    return res.status(500).send({
+      success: false,
+      message: "Failed to fetch forum posts.",
+      error: error.message,
+    });
+  }
+});
     // ==========================================
     // GET FORUM POSTS BY AUTHOR
     // ==========================================
@@ -1847,7 +1904,7 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   }
   catch (error) {

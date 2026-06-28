@@ -240,7 +240,17 @@ async function run() {
 
         // 2. CASE A: LANDING PAGE (No page passed, just a limit like ?limit=3)
         // Send back a direct array so it doesn't break your home page setup
-        
+
+        // if (!page && limit > 0 && limit <= 3) {
+        //   const result = await classesCollection
+        //     .find({ status: "approved" })
+        //     .sort({ rating: -1 })
+        //     .limit(limit)
+        //     .toArray();
+
+        //   return res.status(200).send(result);
+        // }
+
         if (!page && limit > 0 && limit <= 3) {
           const result = await classesCollection
             .find({ status: "approved" })
@@ -250,8 +260,6 @@ async function run() {
 
           return res.status(200).send(result);
         }
-
-
         // 3. CASE B: PAGINATION PAGE (e.g., ?page=1&limit=6&search=spin)
         const activePage = page || 1;
         const activeLimit = limit || 6;
@@ -261,7 +269,9 @@ async function run() {
         const searchQuery = req.query.search || "";
         const categoryQuery = req.query.category || "";
 
-        let queryFilter = {};
+        let queryFilter = {
+          status: "approved",
+        };
 
         if (searchQuery) {
           queryFilter.$or = [

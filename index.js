@@ -40,14 +40,7 @@ async function run() {
     const trainerApplicationsCollection = client.db('fitsphere_DB').collection('trainerApplications');
     const usersCollection = client.db('fitsphere_DB').collection('user');
 
-    // Middleware to protect routes
-    // const getRequestUserId = (req) => {
-    //   return (
-    //     req.headers["x-user-id"] ||
-    //     req.query.requestUserId ||
-    //     req.body?.requestUserId
-    //   );
-    // };
+
 
     const getRequestUserId = (req) => {
       return (
@@ -107,7 +100,7 @@ async function run() {
     const verifyAdminOrTrainer = verifyRole(["admin", "trainer"]);
 
 
-    // const verifyAdmin = async (req, res, next) => {
+
     //   try {
     //     const requestUserId = getRequestUserId(req);
 
@@ -235,6 +228,8 @@ async function run() {
     // ==========================================
     // UNIFIED CLASSES ROUTE (FIXED & COMBINED)
     // ==========================================
+
+
     app.get('/api/classes', async (req, res) => {
       try {
         // const classesCollection = client.db('fitsphere_DB').collection('classes');
@@ -245,8 +240,14 @@ async function run() {
 
         // 2. CASE A: LANDING PAGE (No page passed, just a limit like ?limit=3)
         // Send back a direct array so it doesn't break your home page setup
+        
         if (!page && limit > 0 && limit <= 3) {
-          const result = await classesCollection.find().limit(limit).toArray();
+          const result = await classesCollection
+            .find({ status: "approved" })
+            .sort({ rating: -1 })
+            .limit(limit)
+            .toArray();
+
           return res.status(200).send(result);
         }
 
